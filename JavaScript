@@ -1,0 +1,1011 @@
+import { useState, useEffect, useRef } from "react";
+
+// ── Fonts via Google ──────────────────────────────────────────────────────────
+const FontLink = () => (
+  <style>{`
+    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500;600&family=DM+Mono:wght@400;500&display=swap');
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #0f0e0c;
+      --surface:  #1a1916;
+      --card:     #222018;
+      --border:   #2e2b24;
+      --gold:     #e8b84b;
+      --gold-dim: #a07c28;
+      --amber:    #f0945a;
+      --green:    #6fcf97;
+      --red:      #e87070;
+      --blue:     #7eb8e8;
+      --text:     #f0ece2;
+      --muted:    #7a7464;
+      --subtle:   #3a3628;
+    }
+
+    body { background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; min-height: 100vh; overflow-x: hidden; }
+
+    h1,h2,h3 { font-family: 'Playfair Display', serif; }
+
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes pulse-gold {
+      0%,100% { box-shadow: 0 0 0 0 rgba(232,184,75,.4); }
+      50%      { box-shadow: 0 0 0 8px rgba(232,184,75,0); }
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes timerPulse {
+      0%,100% { opacity:1; }
+      50%      { opacity:.6; }
+    }
+  `}</style>
+);
+
+// ── Data ──────────────────────────────────────────────────────────────────────
+const CATEGORIES = [
+  { id: "work",     label: "Werk",          icon: "💼", color: "#7eb8e8" },
+  { id: "study",    label: "Studie",        icon: "📚", color: "#a78bfa" },
+  { id: "sport",    label: "Sport",         icon: "🏃", color: "#6fcf97" },
+  { id: "home",     label: "Huishouden",    icon: "🏠", color: "#f0945a" },
+  { id: "relax",    label: "Ontspanning",   icon: "🌿", color: "#e8b84b" },
+];
+
+const DAYS = ["Ma","Di","Wo","Do","Vr","Za","Zo"];
+const HOURS = Array.from({length:24},(_,i)=>i);
+
+const seed = (n) => {
+  const r = [];
+  for(let i=0;i<n;i++) r.push(Math.floor(Math.random()*100));
+  return r;
+};
+
+const MOCK_WEEK = [
+  { day:"Ma", work:6.5, study:1.5, sport:1, home:0.5, relax:2, energy:7, focus:8 },
+  { day:"Di", work:5,   study:2,   sport:0, home:1,   relax:2, energy:6, focus:6 },
+  { day:"Wo", work:7,   study:0.5, sport:1, home:0,   relax:1.5, energy:8, focus:9 },
+  { day:"Do", work:4,   study:3,   sport:1.5, home:1, relax:2, energy:9, focus:8 },
+  { day:"Vr", work:6,   study:1,   sport:0, home:2,   relax:3, energy:7, focus:7 },
+  { day:"Za", work:1,   study:2,   sport:2, home:1,   relax:4, energy:8, focus:6 },
+  { day:"Zo", work:0,   study:1,   sport:1, home:2,   relax:5, energy:6, focus:5 },
+];
+
+const MOCK_FRIENDS = [
+  { name:"Emma V.", avatar:"EV", streak:14, hours:32, sport:4 },
+  { name:"Luca M.", avatar:"LM", streak:7,  hours:28, sport:6 },
+  { name:"Sara K.", avatar:"SK", streak:21, hours:41, sport:3 },
+];
+
+const MOCK_AI_SCHEDULE = [
+  { time:"07:30", label:"Ochtend routine + sport", type:"sport",   dur:45 },
+  { time:"09:00", label:"Diepe focus — project A", type:"work",    dur:90 },
+  { time:"10:30", label:"Korte pauze",              type:"relax",  dur:15 },
+  { time:"10:45", label:"E-mails & meetings",       type:"work",   dur:75 },
+  { time:"12:00", label:"Lunch & wandeling",        type:"relax",  dur:60 },
+  { time:"13:00", label:"Studie blok",              type:"study",  dur:90 },
+  { time:"14:30", label:"Creatief werk",            type:"work",   dur:60 },
+  { time:"15:30", label:"Administratie",            type:"home",   dur:30 },
+  { time:"16:00", label:"Afsluiten & review",       type:"work",   dur:30 },
+  { time:"16:30", label:"Ontspanning / hobby",      type:"relax",  dur:120 },
+];
+
+const MOCK_TODOS = [
+  { id:1, title:"Rapport Q2 afmaken", priority:"high",   done:false, est:90, cat:"work"  },
+  { id:2, title:"Meetingnotities uitwerken", priority:"mid", done:true, est:30, cat:"work" },
+  { id:3, title:"Hoofdstuk 4 lezen", priority:"mid",     done:false, est:45, cat:"study" },
+  { id:4, title:"3km hardlopen",     priority:"low",     done:false, est:25, cat:"sport" },
+  { id:5, title:"Afwas & koken",     priority:"low",     done:true,  est:40, cat:"home"  },
+];
+
+const MOCK_NOTIFICATIONS = [
+  { icon:"⚡", text:"Je focus is nu historisch op zijn hoogst — start je belangrijkste taak!" },
+  { icon:"🏃", text:"Op sportdagen voltooi je gemiddeld 25% meer taken." },
+  { icon:"⏸️", text:"Je hebt 90 min gewerkt — een pauze verhoogt je efficiëntie." },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+const fmt = (s) => {
+  const m = Math.floor(s/60), sec = s%60;
+  return `${String(m).padStart(2,"0")}:${String(sec).padStart(2,"0")}`;
+};
+const catColor = (id) => CATEGORIES.find(c=>c.id===id)?.color ?? "#888";
+const catIcon  = (id) => CATEGORIES.find(c=>c.id===id)?.icon ?? "📌";
+
+// ── Reusable components ───────────────────────────────────────────────────────
+const Card = ({children, style={}}) => (
+  <div style={{
+    background:"var(--card)", border:"1px solid var(--border)",
+    borderRadius:16, padding:24, animation:"fadeUp .4s ease both",
+    ...style
+  }}>{children}</div>
+);
+
+const Badge = ({color, children}) => (
+  <span style={{
+    background: color+"22", color, border:`1px solid ${color}44`,
+    borderRadius:6, padding:"2px 8px", fontSize:11, fontWeight:600,
+    fontFamily:"'DM Mono',monospace", letterSpacing:.5
+  }}>{children}</span>
+);
+
+const GoldBtn = ({children, onClick, style={}, small=false}) => (
+  <button onClick={onClick} style={{
+    background:"var(--gold)", color:"#0f0e0c", border:"none", cursor:"pointer",
+    borderRadius:10, padding: small ? "6px 14px" : "10px 22px",
+    fontFamily:"'DM Sans',sans-serif", fontWeight:600,
+    fontSize: small ? 12 : 14, transition:"all .2s",
+    ...style
+  }}
+    onMouseEnter={e=>e.currentTarget.style.background="#f5cc70"}
+    onMouseLeave={e=>e.currentTarget.style.background="var(--gold)"}
+  >{children}</button>
+);
+
+const GhostBtn = ({children, onClick, style={}, active=false}) => (
+  <button onClick={onClick} style={{
+    background: active ? "var(--subtle)" : "transparent",
+    color: active ? "var(--gold)" : "var(--muted)",
+    border:`1px solid ${active?"var(--gold-dim)":"var(--border)"}`,
+    cursor:"pointer", borderRadius:10, padding:"8px 16px",
+    fontFamily:"'DM Sans',sans-serif", fontWeight:500, fontSize:13,
+    transition:"all .2s", ...style
+  }}>{children}</button>
+);
+
+const Stat = ({label, value, unit="", color="var(--gold)"}) => (
+  <div style={{textAlign:"center"}}>
+    <div style={{fontFamily:"'Playfair Display',serif", fontSize:32, fontWeight:700, color}}>{value}<span style={{fontSize:14,color:"var(--muted)"}}>{unit}</span></div>
+    <div style={{fontSize:11, color:"var(--muted)", marginTop:2, letterSpacing:.5}}>{label.toUpperCase()}</div>
+  </div>
+);
+
+const RingMeter = ({value, max=10, color, size=64, label}) => {
+  const r = (size-8)/2, circ = 2*Math.PI*r, dash = circ*(value/max);
+  return (
+    <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4}}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="var(--border)" strokeWidth={4}/>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={4}
+          strokeDasharray={`${dash} ${circ}`} strokeLinecap="round"
+          transform={`rotate(-90 ${size/2} ${size/2})`}/>
+        <text x={size/2} y={size/2+5} textAnchor="middle" fill={color} fontSize={14} fontWeight={700} fontFamily="'DM Mono',monospace">{value}</text>
+      </svg>
+      <span style={{fontSize:10, color:"var(--muted)", letterSpacing:.5}}>{label}</span>
+    </div>
+  );
+};
+
+const BarChart = ({data, height=120}) => {
+  const max = Math.max(...data.map(d=>d.work+d.study+d.sport+d.home+d.relax));
+  const cats = ["work","study","sport","home","relax"];
+  return (
+    <div style={{display:"flex",alignItems:"flex-end",gap:6,height}}>
+      {data.map((d,i)=>{
+        const total = cats.reduce((s,c)=>s+(d[c]||0),0);
+        return (
+          <div key={i} style={{flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+            <div style={{width:"100%",display:"flex",flexDirection:"column-reverse",borderRadius:4,overflow:"hidden",height:height-20}}>
+              {cats.map(c=>{
+                const h = ((d[c]||0)/max)*(height-20);
+                return h>0 ? <div key={c} style={{width:"100%",height:h,background:catColor(c),opacity:.85}}/> : null;
+              })}
+            </div>
+            <span style={{fontSize:9,color:"var(--muted)"}}>{d.day}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const LineChart = ({data, color, height=80}) => {
+  const w=280, h=height, pad=8;
+  const max=Math.max(...data), min=Math.min(...data);
+  const pts = data.map((v,i)=>({
+    x: pad + i*(w-2*pad)/(data.length-1),
+    y: h - pad - (v-min)/(max-min||1)*(h-2*pad)
+  }));
+  const path = pts.map((p,i)=>`${i===0?"M":"L"}${p.x},${p.y}`).join(" ");
+  const area = path + ` L${pts[pts.length-1].x},${h} L${pts[0].x},${h} Z`;
+  return (
+    <svg width="100%" viewBox={`0 0 ${w} ${h}`} style={{overflow:"visible"}}>
+      <defs>
+        <linearGradient id={`lg-${color.replace("#","")}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor={color} stopOpacity=".35"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      <path d={area} fill={`url(#lg-${color.replace("#","")})`}/>
+      <path d={path} fill="none" stroke={color} strokeWidth={2} strokeLinecap="round"/>
+      {pts.map((p,i)=><circle key={i} cx={p.x} cy={p.y} r={3} fill={color}/>)}
+    </svg>
+  );
+};
+
+// ── Timer Component ───────────────────────────────────────────────────────────
+const TimerPanel = () => {
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [cat, setCat] = useState("work");
+  const [logs, setLogs] = useState([
+    {cat:"work",dur:5400,label:"Ochtend sprint"},
+    {cat:"study",dur:2700,label:"Econometrics"},
+  ]);
+  const [manHours, setManHours] = useState("");
+  const [manCat, setManCat] = useState("work");
+  const [manLabel, setManLabel] = useState("");
+  const ref = useRef(null);
+
+  useEffect(()=>{
+    if(running){ ref.current = setInterval(()=>setElapsed(e=>e+1),1000); }
+    else clearInterval(ref.current);
+    return ()=>clearInterval(ref.current);
+  },[running]);
+
+  const stop = () => {
+    if(elapsed>0) setLogs(l=>[{cat,dur:elapsed,label:"Timer sessie"},...l]);
+    setRunning(false); setElapsed(0);
+  };
+
+  const addManual = () => {
+    const h = parseFloat(manHours);
+    if(!h||h<=0) return;
+    setLogs(l=>[{cat:manCat,dur:Math.round(h*3600),label:manLabel||"Handmatige invoer"},...l]);
+    setManHours(""); setManLabel("");
+  };
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      {/* Timer */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>TIMER MODUS</div>
+        <div style={{
+          fontFamily:"'DM Mono',monospace", fontSize:64, fontWeight:500,
+          color: running?"var(--gold)":"var(--text)",
+          textAlign:"center", letterSpacing:4, marginBottom:20,
+          animation: running?"timerPulse 2s infinite":"none"
+        }}>{fmt(elapsed)}</div>
+
+        {/* Category picker */}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:20,justifyContent:"center"}}>
+          {CATEGORIES.map(c=>(
+            <button key={c.id} onClick={()=>setCat(c.id)} style={{
+              background: cat===c.id ? c.color+"33" : "var(--surface)",
+              border:`1px solid ${cat===c.id?c.color:"var(--border)"}`,
+              color: cat===c.id ? c.color : "var(--muted)",
+              borderRadius:8, padding:"6px 12px", cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif", fontSize:12, fontWeight:500,
+              transition:"all .2s"
+            }}>{c.icon} {c.label}</button>
+          ))}
+        </div>
+
+        <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+          {!running
+            ? <GoldBtn onClick={()=>setRunning(true)} style={{animation:"pulse-gold 2s infinite"}}>▶ Start</GoldBtn>
+            : <>
+                <GhostBtn onClick={()=>setRunning(false)}>⏸ Pauze</GhostBtn>
+                <GoldBtn onClick={stop}>⏹ Stop & Opslaan</GoldBtn>
+              </>
+          }
+        </div>
+      </Card>
+
+      {/* Manual */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>HANDMATIGE INVOER</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:12}}>
+          <input value={manHours} onChange={e=>setManHours(e.target.value)} type="number" min="0" step="0.25"
+            placeholder="Uren (bijv. 1.5)" style={inputStyle}/>
+          <input value={manLabel} onChange={e=>setManLabel(e.target.value)}
+            placeholder="Omschrijving" style={inputStyle}/>
+        </div>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
+          {CATEGORIES.map(c=>(
+            <button key={c.id} onClick={()=>setManCat(c.id)} style={{
+              background: manCat===c.id ? c.color+"33" : "var(--surface)",
+              border:`1px solid ${manCat===c.id?c.color:"var(--border)"}`,
+              color: manCat===c.id ? c.color : "var(--muted)",
+              borderRadius:8, padding:"5px 10px", cursor:"pointer",
+              fontFamily:"'DM Sans',sans-serif", fontSize:11, transition:"all .2s"
+            }}>{c.icon} {c.label}</button>
+          ))}
+        </div>
+        <GoldBtn onClick={addManual} small>+ Toevoegen</GoldBtn>
+      </Card>
+
+      {/* Log */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>VANDAAG GELOGD</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {logs.map((l,i)=>(
+            <div key={i} style={{
+              display:"flex",alignItems:"center",gap:12,padding:"10px 14px",
+              background:"var(--surface)",borderRadius:10,
+              borderLeft:`3px solid ${catColor(l.cat)}`
+            }}>
+              <span style={{fontSize:18}}>{catIcon(l.cat)}</span>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500}}>{l.label}</div>
+                <div style={{fontSize:11,color:"var(--muted)"}}>{CATEGORIES.find(c=>c.id===l.cat)?.label}</div>
+              </div>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--gold)"}}>{fmt(l.dur)}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+const inputStyle = {
+  background:"var(--surface)", border:"1px solid var(--border)", color:"var(--text)",
+  borderRadius:8, padding:"9px 12px", fontFamily:"'DM Sans',sans-serif", fontSize:13,
+  outline:"none", width:"100%"
+};
+
+// ── Todo Component ────────────────────────────────────────────────────────────
+const TodoPanel = () => {
+  const [todos, setTodos] = useState(MOCK_TODOS);
+  const [title, setTitle] = useState("");
+  const [pri, setPri] = useState("mid");
+  const [cat, setCat] = useState("work");
+  const [est, setEst] = useState("");
+
+  const toggle = (id) => setTodos(t=>t.map(x=>x.id===id?{...x,done:!x.done}:x));
+  const add = () => {
+    if(!title.trim()) return;
+    setTodos(t=>[{id:Date.now(),title,priority:pri,cat,est:parseInt(est)||30,done:false},...t]);
+    setTitle(""); setEst("");
+  };
+
+  const priColor = {high:"var(--red)",mid:"var(--amber)",low:"var(--muted)"};
+  const priLabel = {high:"Hoog",mid:"Midden",low:"Laag"};
+
+  const done = todos.filter(t=>t.done).length;
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      <Card>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+          <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1}}>TAKEN VANDAAG</div>
+          <Badge color="var(--gold)">{done}/{todos.length} klaar</Badge>
+        </div>
+
+        {/* Progress bar */}
+        <div style={{background:"var(--border)",borderRadius:4,height:4,marginBottom:20}}>
+          <div style={{background:"var(--gold)",height:4,borderRadius:4,width:`${(done/todos.length)*100}%`,transition:"width .4s"}}/>
+        </div>
+
+        {/* Add task */}
+        <div style={{background:"var(--surface)",borderRadius:12,padding:14,marginBottom:16}}>
+          <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Nieuwe taak..."
+            style={{...inputStyle, marginBottom:10}}
+            onKeyDown={e=>e.key==="Enter"&&add()}/>
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:10}}>
+            {["high","mid","low"].map(p=>(
+              <button key={p} onClick={()=>setPri(p)} style={{
+                background: pri===p?priColor[p]+"22":"var(--card)",
+                border:`1px solid ${pri===p?priColor[p]:"var(--border)"}`,
+                color: pri===p?priColor[p]:"var(--muted)",
+                borderRadius:6, padding:"4px 10px", cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif", fontSize:11, transition:"all .2s"
+              }}>{priLabel[p]}</button>
+            ))}
+            <input value={est} onChange={e=>setEst(e.target.value)} type="number" placeholder="Min."
+              style={{...inputStyle, width:70}}/>
+          </div>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:10}}>
+            {CATEGORIES.map(c=>(
+              <button key={c.id} onClick={()=>setCat(c.id)} style={{
+                background: cat===c.id?c.color+"22":"var(--card)",
+                border:`1px solid ${cat===c.id?c.color:"var(--border)"}`,
+                color: cat===c.id?c.color:"var(--muted)",
+                borderRadius:6, padding:"4px 8px", cursor:"pointer",
+                fontFamily:"'DM Sans',sans-serif", fontSize:11, transition:"all .2s"
+              }}>{c.icon}</button>
+            ))}
+          </div>
+          <GoldBtn onClick={add} small>+ Taak toevoegen</GoldBtn>
+        </div>
+
+        {/* List */}
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {todos.map(t=>(
+            <div key={t.id} onClick={()=>toggle(t.id)} style={{
+              display:"flex",alignItems:"center",gap:12,padding:"12px 14px",
+              background:"var(--surface)", borderRadius:10, cursor:"pointer",
+              borderLeft:`3px solid ${t.done?"var(--border)":catColor(t.cat)}`,
+              opacity: t.done ? .5 : 1, transition:"all .2s"
+            }}>
+              <div style={{
+                width:18,height:18,borderRadius:"50%",flexShrink:0,
+                border:`2px solid ${t.done?"var(--green)":"var(--border)"}`,
+                background: t.done?"var(--green)":"transparent",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontSize:10, color:"#0f0e0c"
+              }}>{t.done?"✓":""}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:13,fontWeight:500,textDecoration:t.done?"line-through":"none"}}>{t.title}</div>
+                <div style={{fontSize:10,color:"var(--muted)",marginTop:2}}>
+                  {catIcon(t.cat)} {t.est} min
+                </div>
+              </div>
+              <Badge color={priColor[t.priority]}>{priLabel[t.priority]}</Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+const DashboardPanel = () => {
+  const today = MOCK_WEEK[2];
+  const totalH = CATEGORIES.reduce((s,c)=>s+(today[c.id]||0),0);
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      {/* Notifications */}
+      {MOCK_NOTIFICATIONS.map((n,i)=>(
+        <div key={i} style={{
+          display:"flex",alignItems:"flex-start",gap:14,
+          padding:"14px 18px", background:"var(--gold)11",
+          border:"1px solid var(--gold-dim)", borderRadius:12,
+          animation:`fadeUp .4s ${i*.1}s ease both`
+        }}>
+          <span style={{fontSize:20,flexShrink:0}}>{n.icon}</span>
+          <span style={{fontSize:13,color:"var(--text)",lineHeight:1.5}}>{n.text}</span>
+        </div>
+      ))}
+
+      {/* Stats row */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:20}}>VANDAAG — WOENSDAG</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:16}}>
+          <Stat label="Totaal uren" value={totalH.toFixed(1)} unit="u" color="var(--gold)"/>
+          <Stat label="Energie" value={today.energy} unit="/10" color="var(--amber)"/>
+          <Stat label="Focus" value={today.focus} unit="/10" color="var(--blue)"/>
+          <Stat label="Streak" value={12} unit="d" color="var(--green)"/>
+        </div>
+      </Card>
+
+      {/* Week bar chart */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>DEZE WEEK — TIJDSVERDELING</div>
+        <BarChart data={MOCK_WEEK}/>
+        {/* Legend */}
+        <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:12}}>
+          {CATEGORIES.map(c=>(
+            <div key={c.id} style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"var(--muted)"}}>
+              <div style={{width:10,height:10,borderRadius:2,background:c.color}}/>
+              {c.label}
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Energie & focus trends */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:16}}>
+        <Card>
+          <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:8}}>ENERGIE</div>
+          <LineChart data={MOCK_WEEK.map(d=>d.energy)} color="var(--amber)"/>
+          <div style={{textAlign:"center",marginTop:6,fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--amber)"}}>Ø {(MOCK_WEEK.reduce((s,d)=>s+d.energy,0)/7).toFixed(1)}</div>
+        </Card>
+        <Card>
+          <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:8}}>FOCUS</div>
+          <LineChart data={MOCK_WEEK.map(d=>d.focus)} color="var(--blue)"/>
+          <div style={{textAlign:"center",marginTop:6,fontFamily:"'DM Mono',monospace",fontSize:13,color:"var(--blue)"}}>Ø {(MOCK_WEEK.reduce((s,d)=>s+d.focus,0)/7).toFixed(1)}</div>
+        </Card>
+      </div>
+
+      {/* Heatmap-style calendar */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>ACTIVITEITSKALENDER</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:4}}>
+          {DAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:9,color:"var(--muted)",paddingBottom:4}}>{d}</div>)}
+          {Array.from({length:28}).map((_,i)=>{
+            const v = Math.random();
+            const alpha = v>.7?.8:v>.4?.5:v>.2?.3:.1;
+            return <div key={i} style={{
+              aspectRatio:"1",borderRadius:4,
+              background:`rgba(232,184,75,${alpha})`
+            }}/>;
+          })}
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+// ── Reflection ────────────────────────────────────────────────────────────────
+const ReflectionPanel = () => {
+  const [energy, setEnergy] = useState(7);
+  const [focus, setFocus] = useState(8);
+  const [prod, setProd] = useState(7);
+  const [note, setNote] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  const save = () => { setSaved(true); setTimeout(()=>setSaved(false),2000); };
+
+  const Slider = ({label, value, setValue, color}) => (
+    <div style={{marginBottom:20}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+        <span style={{fontSize:13,color:"var(--muted)"}}>{label}</span>
+        <span style={{fontFamily:"'DM Mono',monospace",fontSize:16,fontWeight:600,color}}>{value}/10</span>
+      </div>
+      <div style={{position:"relative",height:4,background:"var(--border)",borderRadius:4}}>
+        <div style={{position:"absolute",left:0,top:0,height:4,borderRadius:4,background:color,width:`${value*10}%`,transition:"width .2s"}}/>
+      </div>
+      <input type="range" min={1} max={10} value={value} onChange={e=>setValue(+e.target.value)}
+        style={{width:"100%",marginTop:8,accentColor:color,cursor:"pointer"}}/>
+    </div>
+  );
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:20}}>DAGELIJKSE CHECK-IN</div>
+        <div style={{display:"flex",gap:16,justifyContent:"center",marginBottom:24}}>
+          <RingMeter value={energy} color="var(--amber)" label="ENERGIE"/>
+          <RingMeter value={focus}  color="var(--blue)"  label="FOCUS"/>
+          <RingMeter value={prod}   color="var(--green)" label="PRODUCTIVITEIT"/>
+        </div>
+        <Slider label="Energieniveau" value={energy} setValue={setEnergy} color="var(--amber)"/>
+        <Slider label="Focus" value={focus} setValue={setFocus} color="var(--blue)"/>
+        <Slider label="Productiviteit" value={prod} setValue={setProd} color="var(--green)"/>
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:13,color:"var(--muted)",marginBottom:8}}>Korte notitie</div>
+          <textarea value={note} onChange={e=>setNote(e.target.value)}
+            placeholder="Bijv. 'Na sporten had ik veel betere focus…'"
+            style={{...inputStyle,height:90,resize:"none",lineHeight:1.6}}/>
+        </div>
+        <GoldBtn onClick={save}>
+          {saved ? "✓ Opgeslagen!" : "Check-in opslaan"}
+        </GoldBtn>
+      </Card>
+
+      {/* Past reflections */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>RECENTE CHECK-INS</div>
+        {[
+          {day:"Di",e:6,f:6,p:6,note:"Slechte nachtrust, moeizame start."},
+          {day:"Wo",e:8,f:9,p:8,note:"Gesport 's ochtends, top focus!"},
+          {day:"Do",e:9,f:8,p:9,note:"Beste dag van de week tot nu toe."},
+        ].map((r,i)=>(
+          <div key={i} style={{
+            display:"flex",gap:16,padding:"12px 14px",
+            background:"var(--surface)",borderRadius:10,marginBottom:8,
+            alignItems:"center"
+          }}>
+            <div style={{fontFamily:"'Playfair Display',serif",fontSize:22,fontWeight:700,color:"var(--gold)",width:30}}>{r.day}</div>
+            <div style={{flex:1}}>
+              <div style={{fontSize:12,color:"var(--muted)",fontStyle:"italic",marginBottom:4}}>{r.note}</div>
+              <div style={{display:"flex",gap:10}}>
+                <span style={{fontSize:11,color:"var(--amber)"}}>⚡{r.e}</span>
+                <span style={{fontSize:11,color:"var(--blue)"}}>🎯{r.f}</span>
+                <span style={{fontSize:11,color:"var(--green)"}}>✅{r.p}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+};
+
+// ── AI Panel ──────────────────────────────────────────────────────────────────
+const AIPanel = () => {
+  const [loading, setLoading] = useState(false);
+  const [schedule, setSchedule] = useState(null);
+  const [insight, setInsight] = useState(null);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [chatLoading, setChatLoading] = useState(false);
+
+  const generateSchedule = async () => {
+    setLoading(true);
+    setSchedule(null);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:1000,
+          messages:[{
+            role:"user",
+            content:`Je bent een persoonlijke productiviteitscoach. Genereer een optimaal dagschema op basis van deze data:
+- Beste focustijden: 09:00-11:30 en 13:00-15:00
+- Sport verhoogt productiviteit 25%
+- Gemiddelde energie: 7.5/10 's ochtends, daalt naar 6 na 15:00
+- Optimale werkblokken: 90 minuten met 15 min pauze
+- Top productieve dag: woensdag (na sport)
+
+Geef een concreet dagschema met tijdblokken. Reageer in het Nederlands, kort en krachtig. Gebruik emoji per item. Max 200 woorden.`
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b=>b.type==="text")?.text || "Geen data beschikbaar.";
+      setSchedule(text);
+    } catch(e) {
+      setSchedule("Er is iets misgegaan. Probeer opnieuw.");
+    }
+    setLoading(false);
+  };
+
+  const getInsight = async () => {
+    setLoading(true);
+    setInsight(null);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:600,
+          messages:[{
+            role:"user",
+            content:`Analyseer deze productiviteitsdata van de afgelopen week en geef 3 concrete inzichten in het Nederlands:
+Maandag: werk 6.5u, energie 7, focus 8
+Dinsdag: werk 5u, energie 6, focus 6 (geen sport)
+Woensdag: werk 7u, energie 8, focus 9 (sport)
+Donderdag: werk 4u, studie 3u, energie 9, focus 8 (sport)
+Vrijdag: werk 6u, energie 7, focus 7
+Zaterdag: ontspanning 4u, energie 8, focus 6
+Zondag: rust, energie 6
+
+Geef 3 korte, actionable inzichten. Elke inzicht max 2 zinnen. Gebruik ✦ als bullet.`
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b=>b.type==="text")?.text || "Geen inzichten beschikbaar.";
+      setInsight(text);
+    } catch(e) {
+      setInsight("Er is iets misgegaan.");
+    }
+    setLoading(false);
+  };
+
+  const askCoach = async () => {
+    if(!question.trim()) return;
+    setChatLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json"},
+        body: JSON.stringify({
+          model:"claude-sonnet-4-20250514",
+          max_tokens:400,
+          messages:[{
+            role:"user",
+            content:`Je bent een persoonlijke AI productiviteitscoach. De gebruiker vraagt: "${question}"
+Geef een kort, praktisch antwoord in het Nederlands. Max 100 woorden. Wees direct en concreet.`
+          }]
+        })
+      });
+      const data = await res.json();
+      const text = data.content?.find(b=>b.type==="text")?.text || "Geen antwoord.";
+      setAnswer(text);
+    } catch(e) {
+      setAnswer("Fout bij ophalen antwoord.");
+    }
+    setChatLoading(false);
+  };
+
+  const catColor2 = (type) => CATEGORIES.find(c=>c.id===type)?.color ?? "#888";
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      {/* Header */}
+      <div style={{
+        padding:"24px 28px", background:"linear-gradient(135deg, var(--gold)18, var(--amber)08)",
+        border:"1px solid var(--gold-dim)", borderRadius:16, animation:"fadeUp .4s ease"
+      }}>
+        <div style={{fontFamily:"'Playfair Display',serif",fontSize:24,fontWeight:700,marginBottom:8}}>
+          ✦ AI Ritme Coach
+        </div>
+        <div style={{fontSize:13,color:"var(--muted)",lineHeight:1.6}}>
+          Jouw persoonlijke AI-coach analyseert je gedragspatronen en genereert optimale dagstructuren op basis van je energie, focus en activiteiten.
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+        <GoldBtn onClick={generateSchedule} style={{width:"100%"}}>
+          {loading?"⏳ Laden...":"🗓 Genereer Dagschema"}
+        </GoldBtn>
+        <GhostBtn onClick={getInsight} style={{width:"100%",borderColor:"var(--gold-dim)",color:"var(--gold)"}}>
+          {loading?"⏳ Laden...":"🔍 Analyseer Week"}
+        </GhostBtn>
+      </div>
+
+      {/* Schedule result */}
+      {(loading && !schedule && !insight) && (
+        <Card>
+          <div style={{display:"flex",alignItems:"center",gap:12,color:"var(--muted)"}}>
+            <div style={{width:18,height:18,border:"2px solid var(--gold)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+            AI analyseert jouw patronen…
+          </div>
+        </Card>
+      )}
+
+      {schedule && (
+        <Card style={{borderColor:"var(--gold-dim)"}}>
+          <div style={{fontSize:11,color:"var(--gold)",letterSpacing:1,marginBottom:12}}>✦ JOUW OPTIMALE DAGSCHEMA</div>
+          <div style={{fontSize:13,lineHeight:1.8,color:"var(--text)",whiteSpace:"pre-line"}}>{schedule}</div>
+        </Card>
+      )}
+
+      {insight && (
+        <Card style={{borderColor:"var(--amber)44"}}>
+          <div style={{fontSize:11,color:"var(--amber)",letterSpacing:1,marginBottom:12}}>✦ AI INZICHTEN</div>
+          <div style={{fontSize:13,lineHeight:1.8,color:"var(--text)",whiteSpace:"pre-line"}}>{insight}</div>
+        </Card>
+      )}
+
+      {/* Static schedule preview */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>VOORBEELDSCHEMA — WOENSDAG</div>
+        <div style={{display:"flex",flexDirection:"column",gap:6}}>
+          {MOCK_AI_SCHEDULE.map((s,i)=>(
+            <div key={i} style={{
+              display:"flex",alignItems:"center",gap:12,padding:"10px 14px",
+              background:"var(--surface)",borderRadius:10,
+              borderLeft:`3px solid ${catColor2(s.type)}`
+            }}>
+              <div style={{fontFamily:"'DM Mono',monospace",fontSize:11,color:"var(--muted)",width:42,flexShrink:0}}>{s.time}</div>
+              <div style={{flex:1,fontSize:13}}>{s.label}</div>
+              <Badge color={catColor2(s.type)}>{s.dur}m</Badge>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Ask coach */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>VRAAG AAN JE COACH</div>
+        <div style={{display:"flex",gap:10,marginBottom:12}}>
+          <input value={question} onChange={e=>setQuestion(e.target.value)}
+            placeholder="Bijv. Hoe verbeter ik mijn ochtendroutine?"
+            style={{...inputStyle,flex:1}}
+            onKeyDown={e=>e.key==="Enter"&&askCoach()}/>
+          <GoldBtn onClick={askCoach} small>{chatLoading?"…":"Vraag"}</GoldBtn>
+        </div>
+        {chatLoading && <div style={{fontSize:12,color:"var(--muted)",display:"flex",gap:8,alignItems:"center"}}>
+          <div style={{width:12,height:12,border:"2px solid var(--gold)",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 1s linear infinite"}}/>
+          Coach denkt na…
+        </div>}
+        {answer && (
+          <div style={{
+            padding:"14px 16px",background:"var(--gold)0a",
+            border:"1px solid var(--gold-dim)",borderRadius:10,
+            fontSize:13,lineHeight:1.7,color:"var(--text)"
+          }}>{answer}</div>
+        )}
+      </Card>
+    </div>
+  );
+};
+
+// ── Social Panel ──────────────────────────────────────────────────────────────
+const SocialPanel = () => {
+  const [activeChallenge, setActiveChallenge] = useState(null);
+  const challenges = [
+    {id:1,label:"10u studeren p/w",icon:"📚",target:10,current:7.5,unit:"u",color:"var(--blue)"},
+    {id:2,label:"5 workouts p/w",icon:"🏃",target:5,current:3,unit:"x",color:"var(--green)"},
+    {id:3,label:"30 dagen streak",icon:"🔥",target:30,current:12,unit:"d",color:"var(--amber)"},
+  ];
+
+  return (
+    <div style={{display:"grid",gap:20}}>
+      {/* Friends */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>VRIENDEN OVERZICHT</div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {MOCK_FRIENDS.map((f,i)=>(
+            <div key={i} style={{
+              display:"flex",alignItems:"center",gap:14,padding:"14px 16px",
+              background:"var(--surface)",borderRadius:12
+            }}>
+              <div style={{
+                width:40,height:40,borderRadius:"50%",flexShrink:0,
+                background:"linear-gradient(135deg, var(--gold), var(--amber))",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontWeight:700,fontSize:13,color:"#0f0e0c"
+              }}>{f.avatar}</div>
+              <div style={{flex:1}}>
+                <div style={{fontSize:14,fontWeight:600}}>{f.name}</div>
+                <div style={{fontSize:11,color:"var(--muted)",marginTop:2}}>
+                  {f.hours}u gewerkt · {f.sport}x sport
+                </div>
+              </div>
+              <div style={{display:"flex",alignItems:"center",gap:4,color:"var(--amber)"}}>
+                <span style={{fontSize:16}}>🔥</span>
+                <span style={{fontFamily:"'DM Mono',monospace",fontSize:13,fontWeight:600}}>{f.streak}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+        <GhostBtn style={{width:"100%",marginTop:12,justifyContent:"center",display:"flex"}}>
+          + Vriend toevoegen
+        </GhostBtn>
+      </Card>
+
+      {/* Challenges */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>ACTIEVE CHALLENGES</div>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {challenges.map(c=>{
+            const pct = Math.min(c.current/c.target,1)*100;
+            return (
+              <div key={c.id} style={{
+                padding:"14px 16px",background:"var(--surface)",borderRadius:12,
+                border:`1px solid ${activeChallenge===c.id?c.color:"transparent"}`,
+                cursor:"pointer",transition:"all .2s"
+              }} onClick={()=>setActiveChallenge(activeChallenge===c.id?null:c.id)}>
+                <div style={{display:"flex",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontSize:13,fontWeight:500}}>{c.icon} {c.label}</span>
+                  <span style={{fontFamily:"'DM Mono',monospace",fontSize:12,color:c.color}}>
+                    {c.current}/{c.target}{c.unit}
+                  </span>
+                </div>
+                <div style={{background:"var(--border)",borderRadius:4,height:4}}>
+                  <div style={{background:c.color,height:4,borderRadius:4,width:`${pct}%`,transition:"width .4s"}}/>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* Groups */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>GROEPEN</div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+          {[
+            {label:"Studenten",icon:"🎓",members:142,color:"var(--blue)"},
+            {label:"Ondernemers",icon:"💡",members:89,color:"var(--gold)"},
+            {label:"Fitness",icon:"💪",members:203,color:"var(--green)"},
+            {label:"Studiegroep",icon:"📖",members:12,color:"var(--amber)"},
+          ].map((g,i)=>(
+            <div key={i} style={{
+              padding:"14px 16px",background:"var(--surface)",borderRadius:12,
+              border:`1px solid ${g.color}33`,cursor:"pointer"
+            }}>
+              <div style={{fontSize:24,marginBottom:6}}>{g.icon}</div>
+              <div style={{fontSize:13,fontWeight:600}}>{g.label}</div>
+              <div style={{fontSize:10,color:"var(--muted)",marginTop:3}}>{g.members} leden</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+
+      {/* Privacy */}
+      <Card>
+        <div style={{fontSize:11,color:"var(--muted)",letterSpacing:1,marginBottom:16}}>PRIVACY INSTELLINGEN</div>
+        {[
+          {label:"Statistieken delen",desc:"Uren en categorieën",on:true},
+          {label:"Doelen zichtbaar",desc:"Challenges en streaks",on:true},
+          {label:"Profiel zichtbaar",desc:"Naam en avatar",on:false},
+        ].map((p,i)=>(
+          <div key={i} style={{
+            display:"flex",alignItems:"center",justifyContent:"space-between",
+            padding:"12px 0",borderBottom:i<2?"1px solid var(--border)":"none"
+          }}>
+            <div>
+              <div style={{fontSize:13,fontWeight:500}}>{p.label}</div>
+              <div style={{fontSize:11,color:"var(--muted)"}}>{p.desc}</div>
+            </div>
+            <div style={{
+              width:40,height:22,borderRadius:11,
+              background: p.on?"var(--gold)":"var(--border)",
+              position:"relative",cursor:"pointer",transition:"background .2s"
+            }}>
+              <div style={{
+                position:"absolute",top:3,
+                left: p.on?19:3,
+                width:16,height:16,borderRadius:"50%",background:"#fff",
+                transition:"left .2s"
+              }}/>
+            </div>
+          </div>
+        ))}
+      </Card>
+    </div>
+  );
+};
+
+// ── Main App ──────────────────────────────────────────────────────────────────
+const TABS = [
+  {id:"dashboard", label:"Dashboard", icon:"◉"},
+  {id:"timer",     label:"Timer",     icon:"⏱"},
+  {id:"todos",     label:"Taken",     icon:"✓"},
+  {id:"reflect",   label:"Reflectie", icon:"◈"},
+  {id:"ai",        label:"AI Coach",  icon:"✦"},
+  {id:"social",    label:"Sociaal",   icon:"◎"},
+];
+
+export default function App() {
+  const [tab, setTab] = useState("dashboard");
+
+  return (
+    <>
+      <FontLink/>
+      <div style={{maxWidth:480,margin:"0 auto",minHeight:"100vh",display:"flex",flexDirection:"column",position:"relative"}}>
+
+        {/* Header */}
+        <div style={{
+          padding:"20px 24px 16px",
+          borderBottom:"1px solid var(--border)",
+          background:"var(--bg)",
+          position:"sticky",top:0,zIndex:10,
+          backdropFilter:"blur(12px)"
+        }}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+            <div>
+              <div style={{fontFamily:"'Playfair Display',serif",fontSize:20,fontWeight:700,letterSpacing:-.3}}>
+                Ritme<span style={{color:"var(--gold)"}}>.</span>
+              </div>
+              <div style={{fontSize:10,color:"var(--muted)",letterSpacing:1,marginTop:1}}>PERSOONLIJKE AI COACH</div>
+            </div>
+            <div style={{display:"flex",alignItems:"center",gap:10}}>
+              <div style={{
+                width:8,height:8,borderRadius:"50%",background:"var(--green)",
+                boxShadow:"0 0 8px var(--green)", animation:"pulse-gold 2s infinite"
+              }}/>
+              <div style={{
+                width:34,height:34,borderRadius:"50%",
+                background:"linear-gradient(135deg,var(--gold),var(--amber))",
+                display:"flex",alignItems:"center",justifyContent:"center",
+                fontWeight:700,fontSize:13,color:"#0f0e0c"
+              }}>JS</div>
+            </div>
+          </div>
+        </div>
+
+        {/* Content */}
+        <div style={{flex:1,padding:"20px 20px 100px",overflowY:"auto"}}>
+          {tab==="dashboard" && <DashboardPanel/>}
+          {tab==="timer"     && <TimerPanel/>}
+          {tab==="todos"     && <TodoPanel/>}
+          {tab==="reflect"   && <ReflectionPanel/>}
+          {tab==="ai"        && <AIPanel/>}
+          {tab==="social"    && <SocialPanel/>}
+        </div>
+
+        {/* Bottom Nav */}
+        <div style={{
+          position:"fixed",bottom:0,left:"50%",transform:"translateX(-50%)",
+          width:"100%",maxWidth:480,
+          background:"var(--surface)",borderTop:"1px solid var(--border)",
+          display:"flex",padding:"8px 4px 12px",zIndex:20,
+          backdropFilter:"blur(16px)"
+        }}>
+          {TABS.map(t=>(
+            <button key={t.id} onClick={()=>setTab(t.id)} style={{
+              flex:1,display:"flex",flexDirection:"column",alignItems:"center",gap:3,
+              background:"none",border:"none",cursor:"pointer",padding:"6px 4px",
+              color: tab===t.id ? "var(--gold)" : "var(--muted)",
+              transition:"color .2s"
+            }}>
+              <span style={{fontSize:16}}>{t.icon}</span>
+              <span style={{fontSize:9,letterSpacing:.5,fontFamily:"'DM Sans',sans-serif",fontWeight:tab===t.id?600:400}}>
+                {t.label.toUpperCase()}
+              </span>
+              {tab===t.id && <div style={{width:4,height:4,borderRadius:"50%",background:"var(--gold)"}}/>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
+  );
+}
